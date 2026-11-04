@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>DiskUtilities</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="webui.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#dashboard" aria-label="DiskUtilities home">
+        <span class="brand-mark">D</span><span><strong>DiskUtilities</strong><small>Storage overview</small></span>
+      </a>
+      <div class="nav-label">ANALISI</div>
+      <nav class="main-nav" aria-label="Navigazione principale">
+        <button class="nav-item active" data-view="dashboard"><span class="nav-icon">▦</span>Dashboard</button>
+        <button class="nav-item" data-view="explorer"><span class="nav-icon">▤</span>Esplora disco</button>
+        <button class="nav-item" data-view="largest"><span class="nav-icon">↕</span>File più grandi</button>
+        <button class="nav-item" data-view="types"><span class="nav-icon">◫</span>Tipi di file</button>
+      </nav>
+      <div class="nav-label nav-label-spaced">RICERCA</div>
+      <nav class="main-nav" aria-label="Ricerca">
+        <button class="nav-item" data-view="search"><span class="nav-icon">⌕</span>Cerca file</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="readonly-note"><span class="shield">✓</span><div><strong>Sola lettura</strong><p>Nessun file viene modificato.</p></div></div>
+        <div class="app-version">DiskUtilities <span>0.1.0</span></div>
+      </div>
+    </aside>
+
+    <main class="main-area" id="main">
+      <header class="topbar">
+        <div class="mobile-brand"><span class="brand-mark">D</span><strong>DiskUtilities</strong></div>
+        <div class="scan-context"><span class="status-dot" id="statusDot"></span><div><small>PERCORSO ANALIZZATO</small><strong id="rootPath">—</strong></div></div>
+        <div class="top-actions"><button class="button button-secondary" id="chooseRootBtn">Seleziona percorso</button><button class="button button-primary" id="scanBtn">Avvia scansione</button></div>
+      </header>
+      <div class="scan-progress hidden" id="scanProgress" role="progressbar" aria-label="Scansione in corso"><span></span></div>
+      <div class="notice hidden" id="scanNotice" role="status"></div>
+
+      <section class="page-view active" id="view-dashboard">
+        <div class="page-heading"><div><p class="eyebrow">PANORAMICA</p><h1>Dashboard</h1><p class="subtitle">Una vista d'insieme dello spazio occupato dai file analizzati.</p></div><span class="demo-chip" id="dataMode">DATI DIMOSTRATIVI</span><span class="live-chip hidden" id="liveBadge" role="status"><i></i>Aggiornamento in tempo reale</span></div>
+        <div class="metric-grid">
+          <article class="metric-card"><div class="metric-top"><span>Dimensione analizzata</span><span class="metric-icon blue">▧</span></div><strong class="metric-value" id="metricSize">—</strong><span class="metric-foot" id="metricSizeFoot">Dimensione logica dei file</span></article>
+          <article class="metric-card"><div class="metric-top"><span>File individuati</span><span class="metric-icon violet">▤</span></div><strong class="metric-value" id="metricFiles">—</strong><span class="metric-foot">File regolari accessibili</span></article>
+          <article class="metric-card"><div class="metric-top"><span>Directory</span><span class="metric-icon teal">▣</span></div><strong class="metric-value" id="metricDirs">—</strong><span class="metric-foot">Directory individuate</span></article>
+          <article class="metric-card"><div class="metric-top"><span>Elementi non accessibili</span><span class="metric-icon amber">!</span></div><strong class="metric-value" id="metricErrors">—</strong><span class="metric-foot">Richiedono verifica dei permessi</span></article>
+        </div>
+        <article class="panel volume-panel hidden" id="volumePanel"><div class="panel-heading"><div><h2>Spazio sul volume</h2><p id="volumeSummary">—</p></div></div><div class="volume-bar" id="volumeBar"></div><div class="volume-legend" id="volumeLegend"></div></article>
+        <div class="dashboard-grid">
+          <article class="panel extension-panel"><div class="panel-heading"><div><h2>Distribuzione per tipo</h2><p>Estensioni raggruppate per dimensione totale</p></div><button class="text-button" data-goto="types">Dettagli ↗</button></div><div class="donut-layout"><div class="donut" id="extensionDonut"><div class="donut-center"><strong id="extensionCount">—</strong><span>tipi</span></div></div><div class="legend-list" id="extensionLegend"></div></div></article>
+          <article class="panel folders-panel"><div class="panel-heading"><div><h2>Directory più pesanti</h2><p>Dimensione aggregata dei contenuti</p></div><button class="text-button" data-goto="explorer">Esplora ↗</button></div><div class="folder-ranking" id="folderRanking"></div></article>
+        </div>
+        <article class="panel table-panel"><div class="panel-heading"><div><h2>File più grandi</h2><p>I file con la dimensione maggiore nel percorso analizzato</p></div><button class="text-button" data-goto="largest">Vedi tutti ↗</button></div><div class="table-wrap"><table><thead><tr><th>Nome file</th><th>Directory</th><th>Ultima modifica</th><th class="align-right">Dimensione</th></tr></thead><tbody id="dashboardLargestBody"></tbody></table></div></article>
+      </section>
+
+      <section class="page-view" id="view-explorer">
+        <div class="page-heading"><div><p class="eyebrow">NAVIGAZIONE</p><h1>Esplora disco</h1><p class="subtitle">Consulta directory e file senza modificarli.</p></div></div>
+        <div class="explorer-toolbar"><div class="breadcrumbs" id="breadcrumbs"></div><label class="search-box"><span>⌕</span><input id="explorerSearch" type="search" placeholder="Filtra elementi…" autocomplete="off"></label></div>
+        <div class="explorer-layout"><aside class="panel tree-panel"><div class="panel-heading"><div><h2>Directory</h2><p>Seleziona una cartella</p></div></div><div class="directory-tree" id="directoryTree" role="tree" aria-label="Directory"></div></aside><article class="panel contents-panel"><div class="panel-heading"><div><h2 id="currentDirectoryTitle">Contenuto directory</h2><p id="currentDirectoryMeta">—</p></div><label class="sort-select">Ordina <select id="explorerSort"><option value="name">Nome</option><option value="size">Dimensione</option><option value="modified">Modifica</option><option value="type">Tipo</option></select></label></div><div class="table-wrap"><table><thead><tr><th>Nome</th><th>Tipo</th><th>Ultima modifica</th><th class="align-right">Dimensione</th></tr></thead><tbody id="explorerBody"></tbody></table></div><div class="empty-state hidden" id="explorerEmpty">Nessun elemento da mostrare.</div><div class="more-wrap"><button class="button button-secondary hidden" id="explorerMore">Carica altri elementi</button></div></article></div>
+      </section>
+
+      <section class="page-view" id="view-largest">
+        <div class="page-heading"><div><p class="eyebrow">ANALISI FILE</p><h1>File più grandi</h1><p class="subtitle">Individua i file che incidono maggiormente sulla dimensione complessiva.</p></div></div>
+        <article class="panel table-panel full-table"><div class="panel-heading"><div><h2>Classifica per dimensione</h2><p id="largestSubtitle">Dimensione decrescente</p></div><div class="panel-tools"><label class="sort-select">Mostra <select id="largestLimit"><option value="100">100</option><option value="500">500</option><option value="2000">2000</option></select></label><label class="search-box"><span>⌕</span><input id="largestSearch" type="search" placeholder="Cerca nome o percorso…" autocomplete="off"></label></div></div><div class="table-wrap"><table><thead><tr><th>Nome file</th><th>Percorso</th><th>Tipo</th><th class="align-right">Dimensione</th></tr></thead><tbody id="largestBody"></tbody></table></div></article>
+      </section>
+
+      <section class="page-view" id="view-types">
+        <div class="page-heading"><div><p class="eyebrow">ANALISI CONTENUTI</p><h1>Tipi di file</h1><p class="subtitle">Confronta numero di file e dimensioni aggregate per estensione.</p></div></div>
+        <article class="panel table-panel full-table"><div class="panel-heading"><div><h2>Riepilogo estensioni</h2><p>Le estensioni mancanti sono indicate come “senza estensione”.</p></div><label class="search-box"><span>⌕</span><input id="typesSearch" type="search" placeholder="Filtra estensioni…" autocomplete="off"></label></div><div class="table-wrap"><table><thead><tr><th>Estensione</th><th class="align-right">File</th><th class="align-right">Dimensione totale</th><th>Incidenza</th></tr></thead><tbody id="typesBody"></tbody></table></div></article>
+      </section>
+
+      <section class="page-view" id="view-search">
+        <div class="page-heading"><div><p class="eyebrow">RICERCA</p><h1>Cerca file</h1><p class="subtitle">Cerca direttamente sul disco per nome, pattern, dimensione e date. Non richiede una scansione.</p></div><span class="live-chip hidden" id="searchLive" role="status"><i></i>Ricerca in corso</span></div>
+        <article class="panel search-panel">
+          <form id="searchForm" autocomplete="off" novalidate>
+            <div class="sf-grid">
+              <label class="sf-field sf-wide"><span>Cartella di ricerca</span><span class="path-row"><input id="sRoot" class="path-input" type="text" spellcheck="false" placeholder="Es. /home/utente"><button class="button button-secondary" type="button" id="sBrowse">Sfoglia…</button></span></label>
+              <label class="sf-field"><span>Il nome contiene</span><input id="sName" class="path-input" type="text" spellcheck="false" placeholder="Es. relazione"></label>
+              <label class="sf-field"><span>Pattern del nome <small>(<code>*</code> <code>?</code> <code>[a-z]</code>, separati da <code>;</code>)</small></span><input id="sPatterns" class="path-input" type="text" spellcheck="false" placeholder="Es. *.cpp; *.h"></label>
+              <label class="sf-field"><span>Escludi pattern</span><input id="sExclude" class="path-input" type="text" spellcheck="false" placeholder="Es. *.tmp; ~*"></label>
+              <label class="sf-field"><span>Cerca</span><select id="sKind" class="path-input"><option value="files">File</option><option value="directories">Cartelle</option><option value="any">File e cartelle</option></select></label>
+              <div class="sf-field"><span>Dimensione</span><span class="sf-range"><input id="sMinSize" class="path-input" type="number" min="0" step="any" placeholder="min"><select id="sMinUnit" class="path-input"><option value="1">B</option><option value="1000">kB</option><option value="1000000" selected>MB</option><option value="1000000000">GB</option></select><b>–</b><input id="sMaxSize" class="path-input" type="number" min="0" step="any" placeholder="max"><select id="sMaxUnit" class="path-input"><option value="1">B</option><option value="1000">kB</option><option value="1000000" selected>MB</option><option value="1000000000">GB</option></select></span></div>
+              <div class="sf-field"><span>Ultima modifica</span><span class="sf-range"><input id="sModAfter" class="path-input" type="date" aria-label="Modificato dal"><b>–</b><input id="sModBefore" class="path-input" type="date" aria-label="Modificato fino al"></span></div>
+              <div class="sf-field"><span>Data di creazione <small>(se supportata dal sistema)</small></span><span class="sf-range"><input id="sCreAfter" class="path-input" type="date" aria-label="Creato dal"><b>–</b><input id="sCreBefore" class="path-input" type="date" aria-label="Creato fino al"></span></div>
+              <div class="sf-field"><span>Opzioni</span><span class="sf-checks"><label><input type="checkbox" id="sCase"> Maiuscole/minuscole</label><label><input type="checkbox" id="sHidden" checked> Includi nascosti</label><label>Max risultati <select id="sMax" class="path-input"><option value="1000">1.000</option><option value="10000" selected>10.000</option><option value="100000">100.000</option></select></label></span></div>
+            </div>
+            <p class="sf-error hidden" id="sError" role="alert"></p>
+            <div class="sf-actions"><button class="button button-primary" type="submit" id="sGo">Cerca</button><button class="button button-secondary" type="button" id="sReset">Azzera filtri</button><span class="sf-hint">Sola lettura · i symlink non vengono seguiti</span></div>
+          </form>
+        </article>
+        <div class="notice hidden" id="searchNotice" role="status"></div>
+        <article class="panel table-panel full-table search-results">
+          <div class="panel-heading"><div><h2 id="searchTitle">Risultati</h2><p id="searchMeta">Imposta i filtri e premi “Cerca”.</p></div></div>
+          <div class="table-wrap"><table><thead><tr><th><button class="th-sort" data-sort="name">Nome</button></th><th><button class="th-sort" data-sort="path">Percorso</button></th><th class="align-right"><button class="th-sort" data-sort="size">Dimensione</button></th><th><button class="th-sort" data-sort="modified">Modificato</button></th><th><button class="th-sort" data-sort="created">Creato</button></th><th></th></tr></thead><tbody id="searchBody"></tbody></table></div>
+          <div class="more-wrap"><button class="button button-secondary hidden" id="searchMore">Mostra altri risultati</button></div>
+        </article>
+      </section>
+
+      <footer class="app-footer"><span><span class="footer-dot"></span>Modalità consultazione · Nessuna operazione sui file</span><span id="footerStatus">In attesa di scansione</span></footer>
+    </main>
+  </div>
+
+  <dialog id="pathDialog" class="path-dialog"><form method="dialog" id="pathForm"><div class="dialog-heading"><div><p class="eyebrow" id="pathEyebrow">NUOVA ANALISI</p><h2>Seleziona percorso</h2></div><button class="icon-button" value="cancel" aria-label="Chiudi">×</button></div><p>Scegli la cartella da analizzare con “Sfoglia…” oppure digita il percorso. L’analisi è in sola lettura.</p><label class="field-label" for="rootInput">Percorso</label><div class="path-row"><input id="rootInput" class="path-input" type="text" placeholder="Es. C:\Users\utente oppure /home/utente" required autocomplete="off" spellcheck="false"><button class="button button-secondary" type="button" id="browseBtn" aria-expanded="false" aria-controls="folderBrowser">Sfoglia…</button></div>
+<section class="folder-browser hidden" id="folderBrowser" aria-label="Selezione cartella">
+  <div class="fb-toolbar"><button class="button button-secondary fb-up" type="button" id="fbUp" title="Cartella superiore" aria-label="Cartella superiore">↑</button><div class="fb-crumbs" id="fbCrumbs" aria-label="Percorso corrente"></div><label class="fb-toggle"><input type="checkbox" id="fbHidden"> Nascoste</label></div>
+  <div class="fb-body"><nav class="fb-places" id="fbPlaces" aria-label="Posizioni"></nav><div class="fb-list" id="fbList" role="listbox" aria-label="Cartelle" tabindex="-1"></div></div>
+  <p class="fb-status" id="fbStatus" role="status"></p>
+  <div class="fb-actions"><span class="fb-current" id="fbCurrent"></span><button class="button button-primary" type="button" id="fbUse">Usa questa cartella</button></div>
+</section>
+<div class="dialog-actions"><button class="button button-secondary" value="cancel">Annulla</button><button class="button button-primary" id="applyRootBtn" value="default">Usa percorso</button></div></form></dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
