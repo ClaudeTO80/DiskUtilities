@@ -48,7 +48,7 @@ function installNativeBridge() {
     getLargestFiles: (root, limit = 100) => invoke('du_getLargestFiles', root, limit),
     // The heaviest regular files at any depth below `directory`, and the blocks of its direct children.
     getLargestFilesIn: (directory, limit = 100) => invoke('du_getLargestFilesIn', directory, limit),
-    getTreemap: (directory, maxItems = 200) => invoke('du_getTreemap', directory, maxItems),
+    getTreemap: (directory, maxItems = 100, depth = 1) => invoke('du_getTreemap', directory, maxItems, depth),
     getExtensionStatistics: root => invoke('du_getExtensionStatistics', root),
     // options: { sort, descending, filter, directoriesOnly, offset, limit } (sent as one JSON string)
     listDirectory: (path, options = {}) => invoke('du_listDirectory', path, JSON.stringify(options)),
@@ -277,7 +277,7 @@ async function getLargestFiles(root, limit = 100) { return callBackend('getLarge
 async function getExtensionStatistics(root) { return callBackend('getExtensionStatistics', [root], () => structuredClone(demo.extensions), []); }
 const EMPTY_TREEMAP = directory => ({ found: false, path: directory, totalBytes: 0, childCount: 0, items: [] });
 async function getLargestFilesIn(directory, limit = 100) { return callBackend('getLargestFilesIn', [directory, limit], () => demoLargestIn(directory, limit), []); }
-async function getTreemap(directory, maxItems = 200) { return callBackend('getTreemap', [directory, maxItems], () => demoTreemap(directory, maxItems), EMPTY_TREEMAP(directory)); }
+async function getTreemap(directory, maxItems = 100, depth = 1) { return callBackend('getTreemap', [directory, maxItems, depth], () => demoTreemap(directory, maxItems, depth), EMPTY_TREEMAP(directory)); }
 
 /** Demo-only implementation of the server-side listing (filter, sort, paging). */
 function demoListing(path, options) {
@@ -308,7 +308,7 @@ function demoLargestIn(directory, limit) {
   const prefix = `${directory.replace(/[\\/]+$/, '')}/`;
   return structuredClone(demo.largest).filter(file => file.path.startsWith(prefix)).slice(0, limit);
 }
-function demoTreemap(directory, maxItems) {
+function demoTreemapItems(directory, maxItems, depth) {
   const listing = demoListing(directory, {});
   const sized = listing.entries.filter(item => (item.size || 0) > 0)
     .map(item => ({ name: item.name, path: item.path, size: item.size || 0, count: 1, directory: isDirectory(item), aggregate: false }))
@@ -320,7 +320,12 @@ function demoTreemap(directory, maxItems) {
     const rest = sized.slice(shown);
     items.push({ name: '', path: '', size: rest.reduce((sum, item) => sum + item.size, 0), count: rest.length, directory: false, aggregate: true });
   }
-  return { found: listing.found, path: directory, totalBytes: listing.totalBytes, childCount: listing.entries.length, items };
+  if (depth > 1) for (const item of items) if (item.directory) item.children = demoTreemapItems(item.path, maxItems, depth - 1);
+  return items;
+}
+function demoTreemap(directory, maxItems, depth = 1) {
+  const listing = demoListing(directory, {});
+  return { found: listing.found, path: directory, totalBytes: listing.totalBytes, childCount: listing.entries.length, items: demoTreemapItems(directory, maxItems, depth) };
 }
 
 /* ---- Folder chooser: the browser cannot return an absolute path, so the native side lists folders ---- */
@@ -612,7 +617,10 @@ async function refreshExplorer() {
 
 /* ---- Folder detail: heaviest files below the current folder and a block map of its children ----- */
 const TREEMAP_W = 1000, TREEMAP_H = 700;  // layout units; the element keeps the 10:7 aspect ratio from CSS
-const TREEMAP_MAX_BLOCKS = 200;            // includes the aggregate block for the children that do not fit
+const TREEMAP_MAX_BLOCKS = 100;            // per level, includes the aggregate block for the children that do not fit
+const TREEMAP_DEPTH = 3;                   // block levels requested from the bridge (folder → sub-folder → sub-sub-folder)
+const NEST_PAD = 6, NEST_HEAD = 30;        // inset and header strip (layout units) reserved inside a folder block
+const NEST_MIN_W = 70, NEST_MIN_H = 60;    // a folder smaller than this shows no children
 const DETAIL_FILE_LIMIT = 100;
 
 /**
@@ -644,6 +652,21 @@ function layoutTreemap(items, width, height) {
   if (row.length) layoutRow(row, box, rects);
   return rects;
 }
+/**
+ * SequoiaView-style nesting: every folder block is laid out, then its children are laid out inside it below a
+ * header strip. Output is flat and ordered parent-before-child, so children paint over their parent.
+ */
+function layoutNested(items, box, out = [], level = 0) {
+  for (const rect of layoutTreemap(items, box.w, box.h)) {
+    const placed = { item: rect.item, x: box.x + rect.x, y: box.y + rect.y, w: rect.w, h: rect.h, level };
+    out.push(placed);
+    const children = rect.item.children || [];
+    if (!children.length || placed.w < NEST_MIN_W || placed.h < NEST_MIN_H) continue;
+    const inner = { x: placed.x + NEST_PAD, y: placed.y + NEST_HEAD, w: placed.w - 2 * NEST_PAD, h: placed.h - NEST_HEAD - NEST_PAD };
+    if (inner.w > 0 && inner.h > 0) layoutNested(children, inner, out, level + 1);
+  }
+  return out;
+}
 function layoutRow(row, box, rects) {
   if (box.w <= 0 || box.h <= 0) return box; // rounding leftovers: negligible area, nothing to draw
   const sum = row.reduce((acc, cell) => acc + cell.area, 0);
@@ -663,10 +686,18 @@ function treemapBlockHtml(rect, index) {
   const pw = rect.w / TREEMAP_W * 100, ph = rect.h / TREEMAP_H * 100;
   const place = `left:${(rect.x / TREEMAP_W * 100).toFixed(3)}%;top:${(rect.y / TREEMAP_H * 100).toFixed(3)}%;width:${pw.toFixed(3)}%;height:${ph.toFixed(3)}%;`;
   const label = item.aggregate ? `altri ${formatNumber(item.count)} elementi` : item.name;
-  const caption = pw >= 10 && ph >= 12 ? `<span>${escapeHtml(label)}<small>${formatBytes(item.size)}</small></span>` : '';
   const title = escapeHtml(`${item.aggregate ? label : item.path} · ${formatBytes(item.size)}`);
   // The aggregate block keeps the neutral colour from CSS; only real blocks get a palette colour inline.
-  if (item.aggregate) return `<div class="tm-block aggregate" style="${place}" title="${title}">${caption}</div>`;
+  if (item.aggregate) {
+    const caption = pw >= 10 && ph >= 12 ? `<span>${escapeHtml(label)}<small>${formatBytes(item.size)}</small></span>` : '';
+    return `<div class="tm-block aggregate" style="${place}" title="${title}">${caption}</div>`;
+  }
+  if (item.directory && item.children && item.children.length) {
+    // Folder with nested blocks: a tinted container whose header is one line (the children fill the rest).
+    const head = pw >= 8 ? `<span class="tm-head">${escapeHtml(label)} · ${formatBytes(item.size)}</span>` : '';
+    return `<button type="button" class="tm-block dir nested" data-path="${escapeHtml(item.path)}" style="${place}" title="${title}">${head}</button>`;
+  }
+  const caption = pw >= 10 && ph >= 12 ? `<span>${escapeHtml(label)}<small>${formatBytes(item.size)}</small></span>` : '';
   const style = `${place}background:${PALETTE[index % PALETTE.length]}`;
   if (item.directory) return `<button type="button" class="tm-block dir" data-path="${escapeHtml(item.path)}" style="${style}" title="${title}">${caption}</button>`;
   return `<div class="tm-block file" data-file="${escapeHtml(item.path)}" data-dir="${escapeHtml(dirname(item.path))}" style="${style}" title="${title}">${caption}</div>`;
@@ -681,7 +712,7 @@ function renderFolderDetail(files, treemap) {
   $('#folderDetailFiles').innerHTML = files.map(file => `<tr class="file-link" data-file="${escapeHtml(file.path)}" data-dir="${escapeHtml(dirname(file.path))}" title="Apri la cartella contenente"><td>${renderFileName(file)}</td><td class="align-right size-cell"><div class="size-with-bar"><span>${formatBytes(file.size)}</span><div class="mini-bar"><span style="width:${Math.max(1, file.size / top * 100)}%"></span></div></div></td></tr>`).join('') || emptyRow(2, 'Nessun file in questa cartella.');
 
   const items = treemap.items || [];
-  const rects = layoutTreemap(items, TREEMAP_W, TREEMAP_H);
+  const rects = layoutNested(items, { x: 0, y: 0, w: TREEMAP_W, h: TREEMAP_H });
   $('#treemap').innerHTML = rects.length ? rects.map((rect, i) => treemapBlockHtml(rect, i)).join('')
     : '<p class="subtitle" style="padding:16px">Nessun contenuto con dimensione.</p>';
   const drawn = items.reduce((sum, item) => sum + (item.aggregate ? item.count : 1), 0);
@@ -695,7 +726,7 @@ async function refreshFolderDetail() {
   const token = ++state.seq.detail;
   const path = state.currentPath;
   const [files, treemap] = await Promise.all([
-    getLargestFilesIn(path, DETAIL_FILE_LIMIT), getTreemap(path, TREEMAP_MAX_BLOCKS)
+    getLargestFilesIn(path, DETAIL_FILE_LIMIT), getTreemap(path, TREEMAP_MAX_BLOCKS, TREEMAP_DEPTH)
   ]);
   if (token !== state.seq.detail || path !== state.currentPath) return; // superseded by a newer navigation
   renderFolderDetail(files || [], treemap || EMPTY_TREEMAP(path));

@@ -75,3 +75,16 @@ add a new entry that supersedes the old one. Entries marked *(from design notes)
   a view that the drill-down already covers.
 - Rules out: nested (multi-level) treemap in this version, and a precomputed per-folder top-k index. Revisit both if the
   subtree walk is measured as too slow on very large trees.
+
+## D-012 Nested treemap with a shared block budget (supersedes the one-level choice in D-011)
+
+- Choice: the bridge returns the blocks of up to three levels in one query (`depth`, `maxItems` per level). Each level
+  is capped by its share of a total budget of 2,500 blocks; the budget left after a level is split evenly between the
+  sub-folders that are expanded, and a level never creates more blocks than it was given. The UI lays the levels out
+  as nested rectangles, with a one-line header on each folder block; clicking a folder drills into it.
+- Reason: the one-level map could not show the structure of the folder at a glance, which is what the nested view is
+  for. A per-level cap alone does not bound the total (each subtree could still fill its own level), so the budget
+  is what keeps the payload and the layout cost bounded. A split budget, rather than first-come-first-served, keeps
+  large sibling folders from starving the rest.
+- Cost: measured in `measurements.md` (about 4.7 ms and 270 KB of JSON for the largest query on the synthetic tree).
+- Rules out: unbounded depth, and drawing folders that fall below the minimum size (they show no children).

@@ -83,7 +83,8 @@
 .folder-detail-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:16px;padding:0 20px 20px;align-items:start}
 .folder-detail-files{max-height:560px;overflow:auto}
 .treemap{position:relative;width:100%;aspect-ratio:10/7;border:1px solid #22304a;border-radius:10px;background:#0b1120;overflow:hidden}
-.tm-block{position:absolute;box-sizing:border-box;margin:0;border:1px solid #0b1020;padding:5px 6px;font:inherit;font-size:11px;font-weight:600;color:#0b1020;text-align:left;overflow:hidden;min-width:0}
+/* display:flex keeps content at the top: buttons would otherwise centre it, hiding nested headers under the children. */
+.tm-block{position:absolute;box-sizing:border-box;display:flex;flex-direction:column;justify-content:flex-start;margin:0;border:1px solid #0b1020;padding:5px 6px;font:inherit;font-size:11px;font-weight:600;color:#0b1020;text-align:left;overflow:hidden;min-width:0}
 .tm-block span{display:flex;flex-direction:column;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .tm-block small{font-weight:500;opacity:.8}
 .tm-block.dir{cursor:pointer}
@@ -100,3 +101,7 @@
 #explorerBody tr.selected td{background:#233657}
 .tm-block.file{cursor:pointer}
 .tm-block.file:hover{filter:brightness(1.18)}
+/* Nested (SequoiaView-style) folders: a tinted container with a one-line header; children paint over it. */
+.tm-block.nested{background:#121c33;border:1px solid #33466f;color:#c9d6f2;padding:0}
+.tm-block.nested .tm-head{display:block;padding:2px 6px;line-height:14px;font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#c9d6f2}
+.tm-block.nested:hover{filter:brightness(1.25)}

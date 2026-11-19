@@ -45,7 +45,7 @@ public:
     /** @copydoc BridgeContract::getLargestFilesIn */
     std::vector<FileDto> getLargestFilesIn(const std::filesystem::path& directory, std::size_t limit) override;
     /** @copydoc BridgeContract::getTreemap */
-    TreemapDto getTreemap(const std::filesystem::path& directory, std::size_t maxItems) override;
+    TreemapDto getTreemap(const std::filesystem::path& directory, std::size_t maxItems, std::size_t depth) override;
 
     /** @brief Format Unix seconds as ISO-8601 UTC ("" for kNoTimestamp). Exposed for tests. */
     static std::string formatTimestamp(std::int64_t unixSeconds);

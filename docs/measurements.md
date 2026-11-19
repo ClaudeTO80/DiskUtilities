@@ -50,6 +50,24 @@ log-normal sizes (median about 8 KB, a few reaching hundreds of MB), generated f
 - Cost follows the size of the subtree, not of the whole tree. Only the root case visits every file.
 - Not measured: trees above 100,000 files, cold cache, and Windows/macOS.
 
+## Nested treemap query (101,101 entries, 100,000 files, release build, median of 31 runs)
+
+Same machine and tree as the folder detail queries above. `SnapshotBridge::getTreemap`, 100 blocks per level.
+JSON size is a rough estimate (names, paths and about 80 bytes of keys per block), not a measured response.
+
+| Query                       | Blocks | Approx. JSON | Median   | Minimum  |
+|-----------------------------|--------|--------------|----------|----------|
+| root, depth 1 (old view)    | 100    | 17 KB        | 0.008 ms | 0.008 ms |
+| root, depth 2               | 1,100  | 194 KB       | 0.134 ms | 0.129 ms |
+| root, depth 3 (UI)          | 2,100  | 272 KB       | 4.7 ms   | 4.4 ms   |
+| `area7`, depth 3 (UI)       | 1,010  | 193 KB       | 0.143 ms | 0.131 ms |
+| `area7/sub3`, depth 3       | 100    | 19 KB        | 0.015 ms | 0.014 ms |
+
+- The cost at depth 3 on the root is dominated by building the path strings and sorting the 1,000 sub-folders' children
+  (about 1,000 sorts of 100 entries each). It is still far below a frame.
+- The 2,500-block budget was not reached on this tree (2,100 blocks at most); the budget test covers the bound.
+- Not measured: a real WebUI round trip (the 272 KB response over the WebUI transport), trees above 100,000 files.
+
 ## How to re-measure
 
 1. Generate a tree with a fixed size and record its file and directory counts.

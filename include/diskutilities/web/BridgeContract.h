@@ -127,6 +127,7 @@ struct TreemapItemDto {
     std::size_t count = 1;  ///< 1 for a real child; the number of folded children for the aggregate block.
     bool directory = false; ///< True for a directory block.
     bool aggregate = false; ///< True for the block that stands for all the folded children.
+    std::vector<TreemapItemDto> children; ///< Nested blocks of a directory; empty below the requested depth or when the budget is spent.
 };
 
 /** @brief Blocks of one directory's children, ready to be laid out as a treemap. */
@@ -186,11 +187,13 @@ public:
      */
     virtual std::vector<FileDto> getLargestFilesIn(const std::filesystem::path& directory, std::size_t limit) = 0;
     /**
-     * @brief The children of a directory as treemap blocks.
+     * @brief The children of a directory as nested treemap blocks (SequoiaView-style).
      * @param directory Directory to show (must be inside the snapshot).
-     * @param maxItems  Maximum number of blocks, the aggregate block included; 0 returns only the aggregate block.
+     * @param maxItems  Maximum blocks per level, the aggregate block included; 0 returns only the aggregate block.
+     * @param depth     Number of block levels; 1 returns the direct children only, 2 also their children, and so on.
+     *                  The total number of blocks is bounded by an internal budget.
      */
-    virtual TreemapDto getTreemap(const std::filesystem::path& directory, std::size_t maxItems) = 0;
+    virtual TreemapDto getTreemap(const std::filesystem::path& directory, std::size_t maxItems, std::size_t depth) = 0;
 };
 
 } // namespace diskutilities::web

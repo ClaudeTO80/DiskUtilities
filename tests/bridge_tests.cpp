@@ -217,7 +217,7 @@ void treemapBlocks() {
     SnapshotBridge bridge;
     publishScan(bridge, dir.path());
 
-    const auto all = bridge.getTreemap(dir.path(), 10);
+    const auto all = bridge.getTreemap(dir.path(), 10, 1);
     CHECK(all.found);
     CHECK_EQ(all.totalBytes, std::uint64_t{100 + 300 + 5000 + 700 + 9});
     CHECK_EQ(all.childCount, std::size_t{4}); // docs, media, empty, readme
@@ -231,7 +231,7 @@ void treemapBlocks() {
     for (const auto& item : all.items) CHECK(!item.aggregate);
 
     // Only two blocks fit: the biggest child plus one aggregate that folds the other two.
-    const auto capped = bridge.getTreemap(dir.path(), 2);
+    const auto capped = bridge.getTreemap(dir.path(), 2, 1);
     CHECK_EQ(capped.items.size(), std::size_t{2});
     CHECK_EQ(capped.items[0].name, std::string("media"));
     CHECK(capped.items[1].aggregate);
@@ -239,15 +239,71 @@ void treemapBlocks() {
     CHECK_EQ(capped.items[1].size, std::uint64_t{400 + 9});
     CHECK(capped.items[1].path.empty());
 
-    const auto onlyRest = bridge.getTreemap(dir.path(), 0);
+    const auto onlyRest = bridge.getTreemap(dir.path(), 0, 1);
     CHECK_EQ(onlyRest.items.size(), std::size_t{1});
     CHECK(onlyRest.items[0].aggregate);
     CHECK_EQ(onlyRest.items[0].count, std::size_t{3});
     CHECK_EQ(onlyRest.items[0].size, std::uint64_t{6109});
 
-    CHECK(!bridge.getTreemap(dir.path() / "readme", 5).found);
-    CHECK(!bridge.getTreemap(dir.path() / "nope", 5).found);
-    CHECK(!SnapshotBridge{}.getTreemap(dir.path(), 5).found);
+    CHECK(!bridge.getTreemap(dir.path() / "readme", 5, 1).found);
+    CHECK(!bridge.getTreemap(dir.path() / "nope", 5, 1).found);
+    CHECK(!SnapshotBridge{}.getTreemap(dir.path(), 5, 1).found);
+}
+
+void treemapNestsSubfolders() {
+    TempDir dir;
+    sampleTree(dir.path());
+    SnapshotBridge bridge;
+    publishScan(bridge, dir.path());
+
+    // depth 1: direct children only, no nested blocks.
+    const auto flat = bridge.getTreemap(dir.path(), 10, 1);
+    for (const auto& item : flat.items) CHECK(item.children.empty());
+
+    // depth 2: media shows v.mp4 and photos; photos is not expanded yet.
+    const auto two = bridge.getTreemap(dir.path(), 10, 2);
+    const auto& media = two.items[0];
+    CHECK_EQ(media.name, std::string("media"));
+    CHECK_EQ(media.children.size(), std::size_t{2});
+    CHECK_EQ(media.children[0].name, std::string("v.mp4"));
+    CHECK_EQ(media.children[1].name, std::string("photos"));
+    CHECK(media.children[1].children.empty());
+    CHECK(two.items[2].children.empty()); // readme is a file
+
+    // depth 3: photos is expanded too.
+    const auto three = bridge.getTreemap(dir.path(), 10, 3);
+    const auto& photos = three.items[0].children[1];
+    CHECK_EQ(photos.children.size(), std::size_t{1});
+    CHECK_EQ(photos.children[0].name, std::string("p.jpg"));
+
+    // A single block per level: only the aggregate remains, so nothing is nested.
+    const auto capped = bridge.getTreemap(dir.path(), 1, 3);
+    CHECK_EQ(capped.items.size(), std::size_t{1});
+    CHECK(capped.items[0].aggregate);
+    CHECK(capped.items[0].children.empty());
+}
+
+void treemapBudgetBoundsBlocks() {
+    // 60 folders of 60 files: far more blocks than the budget, so the total must stay within it.
+    TempDir dir;
+    for (int d = 0; d < 60; ++d)
+        for (int f = 0; f < 60; ++f)
+            makeFile(dir.path() / ("d" + std::to_string(d)) / ("s" + std::to_string(f % 4)) / ("f" + std::to_string(f) + ".bin"),
+                     static_cast<std::uintmax_t>(10 + d * 60 + f));
+    SnapshotBridge bridge;
+    publishScan(bridge, dir.path());
+    const auto dto = bridge.getTreemap(dir.path(), 100, 3);
+    std::size_t blocks = 0;
+    std::vector<const TreemapItemDto*> pending;
+    for (const auto& item : dto.items) pending.push_back(&item);
+    while (!pending.empty()) {
+        const TreemapItemDto* item = pending.back();
+        pending.pop_back();
+        ++blocks;
+        for (const auto& child : item->children) pending.push_back(&child);
+    }
+    CHECK(blocks > 60);
+    CHECK(blocks <= 2500);
 }
 
 int main() {
@@ -259,6 +315,8 @@ int main() {
     RUN(largestFilesInDirectory);
     RUN(largestFilesInMatchesGlobalRanking);
     RUN(treemapBlocks);
+    RUN(treemapNestsSubfolders);
+    RUN(treemapBudgetBoundsBlocks);
     RUN(queriesAreSafeWhileRepublishing);
     return testReport("bridge_tests");
 }

@@ -206,7 +206,75 @@ std::vector<FileDto> SnapshotBridge::getLargestFilesIn(const std::filesystem::pa
     return result;
 }
 
-TreemapDto SnapshotBridge::getTreemap(const std::filesystem::path& directory, std::size_t maxItems) {
+namespace {
+
+/** Blocks one query may return, nested blocks included; keeps the payload bounded on very large trees. */
+constexpr std::size_t kTreemapBlockBudget = 2500;
+
+/**
+ * @brief Fills @p out with the blocks of one directory's children, nesting sub-directories below it.
+ * @details Children are sorted by size; the biggest @p maxItems - 1 get their own block and the rest share one
+ *          aggregate block. A sub-directory is expanded only while @p depth allows and @p budget is not spent;
+ *          the budget left after this level is split evenly between the expanded sub-directories.
+ * @return Number of blocks created below @p out's level, including the nested ones.
+ */
+std::size_t fillTreemapLevel(const Snapshot& snap, NodeId dir, std::size_t maxItems, std::size_t depth,
+                             std::size_t budget, std::vector<TreemapItemDto>& out) {
+    // A level never creates more blocks than its budget, so the budget bounds the whole query.
+    if (budget == 0) return 0;
+    const std::size_t limit = std::min(maxItems, budget);
+    // Zero-size children have no area in a treemap, so they are counted by the caller but not drawn.
+    std::vector<NodeId> sized;
+    for (const NodeId child : snap.children(dir))
+        if (snap.bytesOf(child) > 0) sized.push_back(child);
+    std::sort(sized.begin(), sized.end(), [&](NodeId a, NodeId b) {
+        if (snap.bytesOf(a) != snap.bytesOf(b)) return snap.bytesOf(a) > snap.bytesOf(b);
+        return snap.node(a).name < snap.node(b).name; // deterministic tie-break
+    });
+
+    const bool overflow = sized.size() > limit;
+    const std::size_t shown = overflow ? (limit > 0 ? limit - 1 : 0) : sized.size();
+    std::size_t used = 0;
+    out.reserve(shown + (overflow ? 1 : 0));
+    for (std::size_t i = 0; i < shown; ++i) {
+        const NodeId child = sized[i];
+        const Node& node = snap.node(child);
+        TreemapItemDto item;
+        item.name = node.name;
+        item.path = snap.pathOf(child);
+        item.size = snap.bytesOf(child);
+        item.directory = node.type == EntryType::Directory;
+        out.push_back(std::move(item));
+        ++used;
+    }
+    if (overflow) {
+        TreemapItemDto rest;
+        rest.aggregate = true;
+        rest.count = sized.size() - shown;
+        for (std::size_t i = shown; i < sized.size(); ++i) rest.size += snap.bytesOf(sized[i]);
+        out.push_back(std::move(rest));
+        ++used;
+    }
+    if (depth <= 1 || used >= budget) return used;
+
+    std::size_t expandable = 0;
+    for (const auto& item : out)
+        if (item.directory) ++expandable;
+    if (expandable == 0) return used;
+    const std::size_t share = (budget - used) / expandable;
+    if (share == 0) return used;
+    // Shown directories come first in `out`, in the same order as `sized`.
+    for (std::size_t i = 0; i < shown; ++i) {
+        if (!out[i].directory) continue;
+        used += fillTreemapLevel(snap, sized[i], maxItems, depth - 1, share, out[i].children);
+    }
+    return used;
+}
+
+} // namespace
+
+TreemapDto SnapshotBridge::getTreemap(const std::filesystem::path& directory, std::size_t maxItems,
+                                      std::size_t depth) {
     TreemapDto dto;
     const auto snap = snapshot();
     if (!snap) {
@@ -221,39 +289,8 @@ TreemapDto SnapshotBridge::getTreemap(const std::filesystem::path& directory, st
     dto.found = true;
     dto.path = snap->pathOf(*id);
     dto.totalBytes = snap->bytesOf(*id);
-    const auto kids = snap->children(*id);
-    dto.childCount = kids.size();
-
-    // Zero-size children have no area in a treemap, so they are counted but not drawn.
-    std::vector<NodeId> sized;
-    sized.reserve(kids.size());
-    for (const NodeId child : kids)
-        if (snap->bytesOf(child) > 0) sized.push_back(child);
-    std::sort(sized.begin(), sized.end(), [&](NodeId a, NodeId b) {
-        if (snap->bytesOf(a) != snap->bytesOf(b)) return snap->bytesOf(a) > snap->bytesOf(b);
-        return snap->node(a).name < snap->node(b).name; // deterministic tie-break
-    });
-
-    const bool overflow = sized.size() > maxItems;
-    const std::size_t shown = overflow ? (maxItems > 0 ? maxItems - 1 : 0) : sized.size();
-    dto.items.reserve(shown + (overflow ? 1 : 0));
-    for (std::size_t i = 0; i < shown; ++i) {
-        const NodeId child = sized[i];
-        const Node& node = snap->node(child);
-        TreemapItemDto item;
-        item.name = node.name;
-        item.path = snap->pathOf(child);
-        item.size = snap->bytesOf(child);
-        item.directory = node.type == EntryType::Directory;
-        dto.items.push_back(std::move(item));
-    }
-    if (overflow) {
-        TreemapItemDto rest;
-        rest.aggregate = true;
-        rest.count = sized.size() - shown;
-        for (std::size_t i = shown; i < sized.size(); ++i) rest.size += snap->bytesOf(sized[i]);
-        dto.items.push_back(std::move(rest));
-    }
+    dto.childCount = snap->children(*id).size();
+    fillTreemapLevel(*snap, *id, maxItems, std::max<std::size_t>(depth, 1), kTreemapBlockBudget, dto.items);
     return dto;
 }
 

@@ -260,6 +260,8 @@ void treemapShape() {
     CHECK(j["items"][1]["aggregate"].asBool());
     CHECK_EQ(j["items"][1]["count"].asUInt64(), std::uint64_t{2});
     CHECK(j["items"][1]["path"].asString().empty());
+    CHECK_EQ(j["items"][0]["children"].size(), 0u);
+    CHECK(j["items"][0]["children"].isArray());
     // The "error" key is reserved for failures in web/app.js: a treemap never carries it.
     CHECK(!j.isMember("error"));
 }

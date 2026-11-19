@@ -210,6 +210,8 @@ Json::Value toJson(const TreemapItemDto& v) {
     j["count"] = Json::UInt64(v.count);
     j["directory"] = v.directory;
     j["aggregate"] = v.aggregate;
+    j["children"] = Json::Value(Json::arrayValue);
+    for (const auto& child : v.children) j["children"].append(toJson(child));
     return j;
 }
 

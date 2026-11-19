@@ -17,7 +17,7 @@ log see `decisions.md`; for the measurements see `measurements.md`.
 - Read-only operation; symbolic links recorded but never followed.
 - Folder chooser with read-only sub-folder listing (`du_listFolders`).
 - Folder detail in "Esplora disco": the heaviest files below the selected folder at any depth (`du_getLargestFilesIn`)
-  next to a squarified block map of its direct children (`du_getTreemap`). Blocks of sub-folders drill down on click;
+  next to a nested, SequoiaView-style block map (`du_getTreemap`, three levels, up to 2,500 blocks). Folder blocks drill down on click;
   the dashboard's "Directory più pesanti" rows open the explorer on that folder.
 - File search (GUI "Cerca file" view and `diskutilities-cli find`) on the live filesystem: name, wildcard
   patterns, excludes, case sensitivity, type, hidden entries, size range, modification and creation date ranges.
@@ -49,8 +49,8 @@ log see `decisions.md`; for the measurements see `measurements.md`.
 - While a scan runs, only the dashboard, the ranking and the type statistics are live; the explorer opens when the
   snapshot is published.
 - The search engine does not use TK4CPP. The glob matcher exists twice on purpose (core and TK4CPP parity test).
-- The folder detail is shown only once a scan is published (not while it runs), and the block map is one level deep:
-  nested blocks like SequoiaView are not implemented.
+- The folder detail is shown only once a scan is published (not while it runs). The block map shows three levels; deeper
+  folders are visible only after drilling down, and the 2,500-block budget can hide small folders on very wide trees.
 
 ## Log
 
@@ -58,3 +58,6 @@ log see `decisions.md`; for the measurements see `measurements.md`.
 - 2026-11-19: Folder detail in the explorer (heaviest files below a folder, one-level treemap of its children). Core,
   bridge, JSON and WebUI bindings built and tested (Linux, GCC 13, GUI off); front end checked in headless Chrome with
   demo data only, not against the native bridge. See `decisions.md` D-011 and `measurements.md`.
+- 2026-11-19: Folder detail block map is nested (SequoiaView-style, three levels, 100 blocks per level, 2,500 in total)
+  and folder blocks drill down. Windows fixes: `_wgetenv` and `sscanf` replaced by the bounds-checked alternatives.
+  Measured in `measurements.md`; see `decisions.md` D-012.

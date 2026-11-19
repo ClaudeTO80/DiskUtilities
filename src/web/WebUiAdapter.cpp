@@ -130,8 +130,9 @@ void WebUiAdapter::getLargestFilesIn(webui::window::event* e) {
 
 void WebUiAdapter::getTreemap(webui::window::event* e) {
     e->return_string(jsonResult([&] {
-        const auto maxItems = static_cast<std::size_t>(std::clamp<long long>(eventInt(e, 1, 200), 0, 1000));
-        return toJson(bridge_.getTreemap(rootArgument(e), maxItems));
+        const auto maxItems = static_cast<std::size_t>(std::clamp<long long>(eventInt(e, 1, 100), 0, 1000));
+        const auto depth = static_cast<std::size_t>(std::clamp<long long>(eventInt(e, 2, 1), 1, 6));
+        return toJson(bridge_.getTreemap(rootArgument(e), maxItems, depth));
     }));
 }
 
