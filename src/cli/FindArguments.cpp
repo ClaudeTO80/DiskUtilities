@@ -11,7 +11,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cstdio>
 #include <charconv>
 #include <cmath>
 #include <ctime>
@@ -91,25 +90,50 @@ std::optional<std::int64_t> parseWhen(std::string_view text, bool endOfDay, std:
         }
     }
 
-    // Absolute local time.
+    // Absolute local time: "YYYY-MM-DD", optionally followed by "T" or " " and "hh:mm" or "hh:mm:ss".
+    // std::from_chars replaces sscanf (deprecated by MSVC, C4996): each field is read with a bounded number of digits.
     int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
-    const std::string s(text);
     bool hasTime = false;
-    int consumed = 0;
-    if (std::sscanf(s.c_str(), "%4d-%2d-%2d%n", &year, &month, &day, &consumed) != 3) return std::nullopt;
-    std::string_view rest = std::string_view(s).substr(static_cast<std::size_t>(consumed));
-    if (!rest.empty()) {
-        if (rest.front() != 'T' && rest.front() != ' ') return std::nullopt;
-        const std::string tail(rest.substr(1));
-        int n = 0;
-        int got = std::sscanf(tail.c_str(), "%2d:%2d:%2d%n", &hour, &minute, &second, &n);
-        if (got == 3 && static_cast<std::size_t>(n) == tail.size()) { hasTime = true; }
-        else {
-            second = 0;
-            got = std::sscanf(tail.c_str(), "%2d:%2d%n", &hour, &minute, &n);
-            if (got != 2 || static_cast<std::size_t>(n) != tail.size()) return std::nullopt;
-            hasTime = true;
+    std::size_t pos = 0;
+    const auto number = [&](std::size_t maxDigits) -> std::optional<int> {
+        std::size_t stop = pos;
+        while (stop < text.size() && stop - pos < maxDigits && text[stop] >= '0' && text[stop] <= '9') ++stop;
+        if (stop == pos) return std::nullopt;
+        int value = 0;
+        const auto [ptr, ec] = std::from_chars(text.data() + pos, text.data() + stop, value);
+        if (ec != std::errc{} || ptr != text.data() + stop) return std::nullopt;
+        pos = stop;
+        return value;
+    };
+    const auto expect = [&](char c) {
+        if (pos < text.size() && text[pos] == c) { ++pos; return true; }
+        return false;
+    };
+    const auto yearValue = number(4);
+    if (!yearValue || !expect('-')) return std::nullopt;
+    year = *yearValue;
+    const auto monthValue = number(2);
+    if (!monthValue || !expect('-')) return std::nullopt;
+    month = *monthValue;
+    const auto dayValue = number(2);
+    if (!dayValue) return std::nullopt;
+    day = *dayValue;
+    if (pos < text.size()) {
+        if (!expect('T') && !expect(' ')) return std::nullopt;
+        const auto hourValue = number(2);
+        if (!hourValue || !expect(':')) return std::nullopt;
+        const auto minuteValue = number(2);
+        if (!minuteValue) return std::nullopt;
+        hour = *hourValue;
+        minute = *minuteValue;
+        if (pos < text.size()) {
+            if (!expect(':')) return std::nullopt;
+            const auto secondValue = number(2);
+            if (!secondValue) return std::nullopt;
+            second = *secondValue;
         }
+        if (pos != text.size()) return std::nullopt;
+        hasTime = true;
     }
     if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 60 || year < 1) return std::nullopt;
     if (!hasTime && endOfDay) { hour = 23; minute = 59; second = 59; }
