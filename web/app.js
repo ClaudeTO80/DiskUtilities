@@ -109,7 +109,7 @@ const state = {
   tree: { expanded: new Set(), children: new Map(), loading: new Set() },
   isDemo: true, hasScan: false, scanning: false, extensionCount: null, sort: 'name', largestLimit: 100,
   seq: { refresh: 0, explorer: 0, detail: 0 },
-  pathTarget: 'scan',
+  pathTarget: 'scan', selectedFile: null,
   search: { running: false, shown: 500, sort: 'path', descending: false, total: 0, rootInitialised: false, demo: null }
 };
 const PALETTE = ['#79a9ff', '#a18bff', '#55d4bc', '#efb965', '#60718f', '#ed8da8', '#73c7ed'];
@@ -585,8 +585,10 @@ function renderExplorerItems() {
     const nameCell = isDirectory(item)
       ? `<td><button class="file-name open-directory" data-path="${escapeHtml(item.path)}"><span class="file-icon folder">${glyph}</span><span>${escapeHtml(item.name)}<span class="subpath">${item.accessible === false ? 'Non accessibile · ' : ''}${formatNumber(item.fileCount || 0)} file</span></span></button></td>`
       : `<td>${renderFileName(item)}</td>`;
-    return `<tr>${nameCell}<td>${escapeHtml(label)}</td><td>${formatDate(item.modified)}</td>${sizeCell}</tr>`;
+    const selected = !isDirectory(item) && item.path === state.selectedFile;
+    return `<tr${selected ? ' class="selected"' : ''}>${nameCell}<td>${escapeHtml(label)}</td><td>${formatDate(item.modified)}</td>${sizeCell}</tr>`;
   }).join('');
+  $('#explorerBody tr.selected')?.scrollIntoView({ block: 'nearest' });
   $('#explorerEmpty').textContent = state.scanning ? 'Scansione in corso: l’esplorazione sarà disponibile al termine.' : 'Nessun elemento da mostrare.';
   $('#explorerEmpty').classList.toggle('hidden', items.length !== 0);
   const remaining = Math.max(0, total - items.length);
@@ -667,7 +669,7 @@ function treemapBlockHtml(rect, index) {
   if (item.aggregate) return `<div class="tm-block aggregate" style="${place}" title="${title}">${caption}</div>`;
   const style = `${place}background:${PALETTE[index % PALETTE.length]}`;
   if (item.directory) return `<button type="button" class="tm-block dir" data-path="${escapeHtml(item.path)}" style="${style}" title="${title}">${caption}</button>`;
-  return `<div class="tm-block file" style="${style}" title="${title}">${caption}</div>`;
+  return `<div class="tm-block file" data-file="${escapeHtml(item.path)}" data-dir="${escapeHtml(dirname(item.path))}" style="${style}" title="${title}">${caption}</div>`;
 }
 function renderFolderDetail(files, treemap) {
   const name = basename(state.currentPath) || state.currentPath;
@@ -676,7 +678,7 @@ function renderFolderDetail(files, treemap) {
     ? `${formatNumber(files.length)} file più grandi, anche nelle sottocartelle · dimensione decrescente`
     : 'Nessun file in questa cartella.';
   const top = files[0] ? files[0].size || 1 : 1;
-  $('#folderDetailFiles').innerHTML = files.map(file => `<tr><td>${renderFileName(file)}</td><td class="align-right size-cell"><div class="size-with-bar"><span>${formatBytes(file.size)}</span><div class="mini-bar"><span style="width:${Math.max(1, file.size / top * 100)}%"></span></div></div></td></tr>`).join('') || emptyRow(2, 'Nessun file in questa cartella.');
+  $('#folderDetailFiles').innerHTML = files.map(file => `<tr class="file-link" data-file="${escapeHtml(file.path)}" data-dir="${escapeHtml(dirname(file.path))}" title="Apri la cartella contenente"><td>${renderFileName(file)}</td><td class="align-right size-cell"><div class="size-with-bar"><span>${formatBytes(file.size)}</span><div class="mini-bar"><span style="width:${Math.max(1, file.size / top * 100)}%"></span></div></div></td></tr>`).join('') || emptyRow(2, 'Nessun file in questa cartella.');
 
   const items = treemap.items || [];
   const rects = layoutTreemap(items, TREEMAP_W, TREEMAP_H);
@@ -706,7 +708,14 @@ async function loadMoreExplorer() {
   state.listing = { total: listing.total || 0, totalBytes: listing.totalBytes || 0, truncated: !!listing.truncated };
   renderExplorerItems();
 }
+/** Open the explorer on the folder that contains a file and highlight the file. */
+async function openFileInExplorer(directory, file) {
+  state.selectedFile = file;
+  state.currentPath = directory;
+  setView('explorer'); // refreshes the explorer for state.currentPath
+}
 async function navigateTo(path) {
+  state.selectedFile = null;
   state.currentPath = path;
   await refreshExplorer();
 }
@@ -1116,8 +1125,14 @@ function bindEvents() {
     await navigateTo(button.dataset.path);
   });
   $('#treemap').addEventListener('click', async event => {
+    const file = event.target.closest('.tm-block.file');
+    if (file) { await openFileInExplorer(file.dataset.dir, file.dataset.file); return; }
     const block = event.target.closest('button.tm-block'); if (!block) return;
     await navigateTo(block.dataset.path);
+  });
+  $('#folderDetailFiles').addEventListener('click', async event => {
+    const row = event.target.closest('tr.file-link'); if (!row) return;
+    await openFileInExplorer(row.dataset.dir, row.dataset.file);
   });
   // A heavy folder on the dashboard opens in the explorer, with that folder selected.
   $('#folderRanking').addEventListener('click', event => {

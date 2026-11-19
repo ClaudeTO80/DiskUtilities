@@ -94,3 +94,9 @@
 .rank-item:hover .rank-name{color:#c3d5ff}
 .rank-item:focus-visible{outline:2px solid #72a7ff;outline-offset:2px}
 @media(max-width:860px){.folder-detail-grid{grid-template-columns:1fr}}
+/* File rows in the detail panel and the file highlighted in the explorer. */
+.folder-detail .file-link{cursor:pointer}
+.folder-detail .file-link:hover td{background:#1b263b}
+#explorerBody tr.selected td{background:#233657}
+.tm-block.file{cursor:pointer}
+.tm-block.file:hover{filter:brightness(1.18)}
