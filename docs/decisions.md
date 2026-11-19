@@ -62,3 +62,16 @@ add a new entry that supersedes the old one. Entries marked *(from design notes)
 - Choice: the JSON key `error` is reserved for failures that `invoke()` in `web/app.js` must throw. Ordinary
   "not found" results use `reason` (listing) or `failure` (search status).
 - Reason: otherwise normal results are turned into exceptions by the front end.
+
+## D-011 Folder detail: subtree files by bounded heap, one-level treemap
+
+- Choice: the heaviest files of a folder are found by walking its subtree and keeping the best `k` in a bounded heap
+  (`Snapshot::largestFilesUnder`), with no precomputed per-directory index. The block map shows only the direct
+  children of the selected folder, each folded child beyond a cap of 200 blocks into one aggregate block.
+  Sub-folders drill down on click instead of nesting.
+- Reason: the global top-10,000 index can miss the largest files of a small folder, so it cannot answer the question.
+  A per-directory index would cost memory proportional to directories times `k` on every scan; a subtree walk costs only
+  what is visited, measured in `measurements.md`. Nested rectangles would multiply the payload and the layout cost for
+  a view that the drill-down already covers.
+- Rules out: nested (multi-level) treemap in this version, and a precomputed per-folder top-k index. Revisit both if the
+  subtree walk is measured as too slow on very large trees.

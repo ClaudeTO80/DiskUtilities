@@ -46,6 +46,9 @@ function installNativeBridge() {
     getDefaultRoot: () => invoke('du_getDefaultRoot'),
     getDashboard: root => invoke('du_getDashboard', root),
     getLargestFiles: (root, limit = 100) => invoke('du_getLargestFiles', root, limit),
+    // The heaviest regular files at any depth below `directory`, and the blocks of its direct children.
+    getLargestFilesIn: (directory, limit = 100) => invoke('du_getLargestFilesIn', directory, limit),
+    getTreemap: (directory, maxItems = 200) => invoke('du_getTreemap', directory, maxItems),
     getExtensionStatistics: root => invoke('du_getExtensionStatistics', root),
     // options: { sort, descending, filter, directoriesOnly, offset, limit } (sent as one JSON string)
     listDirectory: (path, options = {}) => invoke('du_listDirectory', path, JSON.stringify(options)),
@@ -105,7 +108,7 @@ const state = {
   listing: { total: 0, totalBytes: 0, truncated: false },
   tree: { expanded: new Set(), children: new Map(), loading: new Set() },
   isDemo: true, hasScan: false, scanning: false, extensionCount: null, sort: 'name', largestLimit: 100,
-  seq: { refresh: 0, explorer: 0 },
+  seq: { refresh: 0, explorer: 0, detail: 0 },
   pathTarget: 'scan',
   search: { running: false, shown: 500, sort: 'path', descending: false, total: 0, rootInitialised: false, demo: null }
 };
@@ -272,6 +275,9 @@ const EMPTY_LISTING = path => () => ({ found: false, path, total: 0, totalBytes:
 async function getDashboard(root) { return callBackend('getDashboard', [root], () => ({ ...structuredClone(demo.dashboard), scanned: true, root, volume: { valid: true, capacity: 500_000_000_000, free: 180_000_000_000, available: 170_000_000_000 }, scanDurationMs: 0 }), EMPTY_DASHBOARD); }
 async function getLargestFiles(root, limit = 100) { return callBackend('getLargestFiles', [root, limit], () => structuredClone(demo.largest).slice(0, limit), []); }
 async function getExtensionStatistics(root) { return callBackend('getExtensionStatistics', [root], () => structuredClone(demo.extensions), []); }
+const EMPTY_TREEMAP = directory => ({ found: false, path: directory, totalBytes: 0, childCount: 0, items: [] });
+async function getLargestFilesIn(directory, limit = 100) { return callBackend('getLargestFilesIn', [directory, limit], () => demoLargestIn(directory, limit), []); }
+async function getTreemap(directory, maxItems = 200) { return callBackend('getTreemap', [directory, maxItems], () => demoTreemap(directory, maxItems), EMPTY_TREEMAP(directory)); }
 
 /** Demo-only implementation of the server-side listing (filter, sort, paging). */
 function demoListing(path, options) {
@@ -296,6 +302,25 @@ function demoListing(path, options) {
 }
 async function listDirectory(path, options = {}) {
   return callBackend('listDirectory', [path, options], () => demoListing(path, options), EMPTY_LISTING(path));
+}
+/* Demo-only versions of the folder-detail queries; the native side applies the same rules. */
+function demoLargestIn(directory, limit) {
+  const prefix = `${directory.replace(/[\\/]+$/, '')}/`;
+  return structuredClone(demo.largest).filter(file => file.path.startsWith(prefix)).slice(0, limit);
+}
+function demoTreemap(directory, maxItems) {
+  const listing = demoListing(directory, {});
+  const sized = listing.entries.filter(item => (item.size || 0) > 0)
+    .map(item => ({ name: item.name, path: item.path, size: item.size || 0, count: 1, directory: isDirectory(item), aggregate: false }))
+    .sort((a, b) => b.size - a.size || a.name.localeCompare(b.name, 'it'));
+  const overflow = sized.length > maxItems;
+  const shown = overflow ? Math.max(0, maxItems - 1) : sized.length;
+  const items = sized.slice(0, shown);
+  if (overflow) {
+    const rest = sized.slice(shown);
+    items.push({ name: '', path: '', size: rest.reduce((sum, item) => sum + item.size, 0), count: rest.length, directory: false, aggregate: true });
+  }
+  return { found: listing.found, path: directory, totalBytes: listing.totalBytes, childCount: listing.entries.length, items };
 }
 
 /* ---- Folder chooser: the browser cannot return an absolute path, so the native side lists folders ---- */
@@ -450,7 +475,7 @@ function renderDashboard() {
   $('#extensionLegend').innerHTML = extensions.map((item, i) => `<div class="legend-item"><span class="legend-swatch" style="background:${PALETTE[i % PALETTE.length]}"></span><span>${escapeHtml(item.extension)}</span><strong>${formatBytes(item.totalBytes)}</strong></div>`).join('') || '<p class="subtitle">Nessun dato disponibile.</p>';
 
   const dirs = (d.largestDirectories || []).slice(0, 5); const max = Math.max(1, ...dirs.map(x => x.size));
-  $('#folderRanking').innerHTML = dirs.map(item => `<div><div class="rank-top"><span class="rank-name" title="${escapeHtml(item.path)}">${escapeHtml(item.name || basename(item.path))}</span><span class="rank-size">${formatBytes(item.size)}</span></div><div class="rank-track"><div class="rank-fill" style="width:${Math.max(1, item.size / max * 100)}%"></div></div></div>`).join('') || '<p class="subtitle">Nessuna directory disponibile.</p>';
+  $('#folderRanking').innerHTML = dirs.map(item => `<button type="button" class="rank-item" data-path="${escapeHtml(item.path)}" title="Apri in Esplora disco"><div class="rank-top"><span class="rank-name" title="${escapeHtml(item.path)}">${escapeHtml(item.name || basename(item.path))}</span><span class="rank-size">${formatBytes(item.size)}</span></div><div class="rank-track"><div class="rank-fill" style="width:${Math.max(1, item.size / max * 100)}%"></div></div></button>`).join('') || '<p class="subtitle">Nessuna directory disponibile.</p>';
   $('#dashboardLargestBody').innerHTML = state.largest.slice(0, 5).map(file => `<tr><td>${renderFileName(file)}</td><td>${escapeHtml(dirname(file.path))}</td><td>${formatDate(file.modified)}</td><td class="align-right size-cell">${formatBytes(file.size)}</td></tr>`).join('') || emptyRow(4, 'Nessun file disponibile.');
 }
 function renderFileName(file) {
@@ -578,8 +603,100 @@ async function refreshExplorer() {
   state.listing = { total: listing.total || 0, totalBytes: listing.totalBytes || 0, truncated: !!listing.truncated };
   renderTree();
   renderExplorerItems();
+  refreshFolderDetail(); // not awaited: the listing is already on screen
   if (!state.isDemo && listing.found === false && state.dashboard && state.dashboard.scanned)
     showToast('La directory non è presente nell’ultima scansione.');
+}
+
+/* ---- Folder detail: heaviest files below the current folder and a block map of its children ----- */
+const TREEMAP_W = 1000, TREEMAP_H = 700;  // layout units; the element keeps the 10:7 aspect ratio from CSS
+const TREEMAP_MAX_BLOCKS = 200;            // includes the aggregate block for the children that do not fit
+const DETAIL_FILE_LIMIT = 100;
+
+/**
+ * Squarified treemap (Bruls, Huijsen, van Wijk). Returns one rectangle per positive-size item, in the
+ * same units as width and height. Items are sorted by size descending, so the biggest blocks come first.
+ */
+function layoutTreemap(items, width, height) {
+  const sized = items.filter(item => item.size > 0);
+  const total = sized.reduce((sum, item) => sum + item.size, 0);
+  if (!total) return [];
+  const scale = width * height / total;
+  const cells = sized.map(item => ({ item, area: item.size * scale }));
+  const rects = [];
+  // Worst aspect ratio of a row laid along a side of length `side`.
+  const worst = (row, side) => {
+    const sum = row.reduce((acc, cell) => acc + cell.area, 0);
+    let max = 0, min = Infinity;
+    for (const cell of row) { max = Math.max(max, cell.area); min = Math.min(min, cell.area); }
+    return Math.max(side * side * max / (sum * sum), sum * sum / (side * side * min));
+  };
+  let box = { x: 0, y: 0, w: width, h: height };
+  let row = [];
+  for (const cell of cells) {
+    const side = Math.min(box.w, box.h);
+    if (row.length === 0 || worst([...row, cell], side) <= worst(row, side)) { row.push(cell); continue; }
+    box = layoutRow(row, box, rects);
+    row = [cell];
+  }
+  if (row.length) layoutRow(row, box, rects);
+  return rects;
+}
+function layoutRow(row, box, rects) {
+  if (box.w <= 0 || box.h <= 0) return box; // rounding leftovers: negligible area, nothing to draw
+  const sum = row.reduce((acc, cell) => acc + cell.area, 0);
+  if (box.w >= box.h) { // the row becomes a column along the left edge
+    const colW = sum / box.h;
+    let y = box.y;
+    for (const cell of row) { const h = cell.area / colW; rects.push({ item: cell.item, x: box.x, y, w: colW, h }); y += h; }
+    return { x: box.x + colW, y: box.y, w: box.w - colW, h: box.h };
+  }
+  const rowH = sum / box.w; // the row becomes a strip along the top edge
+  let x = box.x;
+  for (const cell of row) { const w = cell.area / rowH; rects.push({ item: cell.item, x, y: box.y, w, h: rowH }); x += w; }
+  return { x: box.x, y: box.y + rowH, w: box.w, h: box.h - rowH };
+}
+function treemapBlockHtml(rect, index) {
+  const { item } = rect;
+  const pw = rect.w / TREEMAP_W * 100, ph = rect.h / TREEMAP_H * 100;
+  const place = `left:${(rect.x / TREEMAP_W * 100).toFixed(3)}%;top:${(rect.y / TREEMAP_H * 100).toFixed(3)}%;width:${pw.toFixed(3)}%;height:${ph.toFixed(3)}%;`;
+  const label = item.aggregate ? `altri ${formatNumber(item.count)} elementi` : item.name;
+  const caption = pw >= 10 && ph >= 12 ? `<span>${escapeHtml(label)}<small>${formatBytes(item.size)}</small></span>` : '';
+  const title = escapeHtml(`${item.aggregate ? label : item.path} · ${formatBytes(item.size)}`);
+  // The aggregate block keeps the neutral colour from CSS; only real blocks get a palette colour inline.
+  if (item.aggregate) return `<div class="tm-block aggregate" style="${place}" title="${title}">${caption}</div>`;
+  const style = `${place}background:${PALETTE[index % PALETTE.length]}`;
+  if (item.directory) return `<button type="button" class="tm-block dir" data-path="${escapeHtml(item.path)}" style="${style}" title="${title}">${caption}</button>`;
+  return `<div class="tm-block file" style="${style}" title="${title}">${caption}</div>`;
+}
+function renderFolderDetail(files, treemap) {
+  const name = basename(state.currentPath) || state.currentPath;
+  $('#folderDetailTitle').textContent = `File più pesanti in ${name}`;
+  $('#folderDetailMeta').textContent = files.length
+    ? `${formatNumber(files.length)} file più grandi, anche nelle sottocartelle · dimensione decrescente`
+    : 'Nessun file in questa cartella.';
+  const top = files[0] ? files[0].size || 1 : 1;
+  $('#folderDetailFiles').innerHTML = files.map(file => `<tr><td>${renderFileName(file)}</td><td class="align-right size-cell"><div class="size-with-bar"><span>${formatBytes(file.size)}</span><div class="mini-bar"><span style="width:${Math.max(1, file.size / top * 100)}%"></span></div></div></td></tr>`).join('') || emptyRow(2, 'Nessun file in questa cartella.');
+
+  const items = treemap.items || [];
+  const rects = layoutTreemap(items, TREEMAP_W, TREEMAP_H);
+  $('#treemap').innerHTML = rects.length ? rects.map((rect, i) => treemapBlockHtml(rect, i)).join('')
+    : '<p class="subtitle" style="padding:16px">Nessun contenuto con dimensione.</p>';
+  const drawn = items.reduce((sum, item) => sum + (item.aggregate ? item.count : 1), 0);
+  const empty = Math.max(0, (treemap.childCount || 0) - drawn);
+  $('#treemapNote').textContent = `Dimensione totale ${formatBytes(treemap.totalBytes)}. Clic su una cartella per aprirla.${empty ? ` ${formatNumber(empty)} elementi di dimensione zero non sono rappresentati.` : ''}`;
+}
+async function refreshFolderDetail() {
+  const available = !state.scanning && (state.isDemo || (state.dashboard && state.dashboard.scanned));
+  $('#folderDetail').classList.toggle('hidden', !available);
+  if (!available) return;
+  const token = ++state.seq.detail;
+  const path = state.currentPath;
+  const [files, treemap] = await Promise.all([
+    getLargestFilesIn(path, DETAIL_FILE_LIMIT), getTreemap(path, TREEMAP_MAX_BLOCKS)
+  ]);
+  if (token !== state.seq.detail || path !== state.currentPath) return; // superseded by a newer navigation
+  renderFolderDetail(files || [], treemap || EMPTY_TREEMAP(path));
 }
 async function loadMoreExplorer() {
   const token = state.seq.explorer;
@@ -997,6 +1114,16 @@ function bindEvents() {
   $('#explorerBody').addEventListener('click', async event => {
     const button = event.target.closest('.open-directory'); if (!button) return;
     await navigateTo(button.dataset.path);
+  });
+  $('#treemap').addEventListener('click', async event => {
+    const block = event.target.closest('button.tm-block'); if (!block) return;
+    await navigateTo(block.dataset.path);
+  });
+  // A heavy folder on the dashboard opens in the explorer, with that folder selected.
+  $('#folderRanking').addEventListener('click', event => {
+    const item = event.target.closest('.rank-item'); if (!item) return;
+    state.currentPath = item.dataset.path;
+    setView('explorer'); // refreshes the explorer for state.currentPath
   });
 }
 

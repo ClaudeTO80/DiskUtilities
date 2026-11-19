@@ -161,12 +161,104 @@ void queriesAreSafeWhileRepublishing() {
     CHECK_EQ(bad.load(), 0);
 }
 
+void largestFilesInDirectory() {
+    TempDir dir;
+    sampleTree(dir.path());
+    SnapshotBridge bridge;
+    publishScan(bridge, dir.path());
+
+    // Files below "media" at any depth: v.mp4 (5000) and photos/p.jpg (700).
+    const auto media = bridge.getLargestFilesIn(dir.path() / "media", 10);
+    CHECK_EQ(media.size(), std::size_t{2});
+    CHECK_EQ(media[0].name, std::string("v.mp4"));
+    CHECK_EQ(media[1].path, (dir.path() / "media" / "photos" / "p.jpg").generic_string());
+    CHECK_EQ(bridge.getLargestFilesIn(dir.path() / "media", 1).size(), std::size_t{1});
+    CHECK_EQ(bridge.getLargestFilesIn(dir.path() / "media" / "photos", 10)[0].name, std::string("p.jpg"));
+    // The root covers everything, the same ranking as the whole-tree query.
+    CHECK_EQ(bridge.getLargestFilesIn(dir.path(), 10).size(), std::size_t{5});
+    // Empty directory, file, unknown path and an unscanned root all give nothing.
+    CHECK(bridge.getLargestFilesIn(dir.path() / "empty", 10).empty());
+    CHECK(bridge.getLargestFilesIn(dir.path() / "readme", 10).empty());
+    CHECK(bridge.getLargestFilesIn(dir.path() / "nope", 10).empty());
+    CHECK(bridge.getLargestFilesIn(dir.path() / "media", 0).empty());
+    SnapshotBridge unscanned;
+    CHECK(unscanned.getLargestFilesIn(dir.path(), 10).empty());
+}
+
+void largestFilesInMatchesGlobalRanking() {
+    // Many equal sizes make the tie-break visible: the subtree answer must be the global order restricted to it.
+    TempDir dir;
+    for (int i = 0; i < 60; ++i) {
+        const fs::path sub = dir.path() / ("d" + std::to_string(i % 5)) / ("s" + std::to_string(i % 3));
+        makeFile(sub / ("f" + std::to_string(i) + ".bin"), static_cast<std::uintmax_t>(100 * (i % 7 + 1)));
+    }
+    SnapshotBridge bridge;
+    publishScan(bridge, dir.path());
+    const auto everything = bridge.getLargestFiles(dir.path(), 10000);
+    CHECK_EQ(everything.size(), std::size_t{60});
+    for (const std::string sub : {"d0", "d3", "d4/s1", "d2/s2"}) {
+        const std::string prefix = (dir.path() / sub).generic_string() + "/";
+        std::vector<std::string> expected;
+        for (const auto& file : everything)
+            if (file.path.rfind(prefix, 0) == 0) expected.push_back(file.path);
+        std::vector<std::string> actual;
+        for (const auto& file : bridge.getLargestFilesIn(dir.path() / sub, 10000)) actual.push_back(file.path);
+        CHECK(!expected.empty());
+        CHECK(expected == actual);
+        const auto top3 = bridge.getLargestFilesIn(dir.path() / sub, 3);
+        CHECK_EQ(top3.size(), std::size_t{3});
+        for (std::size_t i = 0; i < top3.size(); ++i) CHECK(top3[i].path == expected[i]);
+    }
+}
+
+void treemapBlocks() {
+    TempDir dir;
+    sampleTree(dir.path());
+    SnapshotBridge bridge;
+    publishScan(bridge, dir.path());
+
+    const auto all = bridge.getTreemap(dir.path(), 10);
+    CHECK(all.found);
+    CHECK_EQ(all.totalBytes, std::uint64_t{100 + 300 + 5000 + 700 + 9});
+    CHECK_EQ(all.childCount, std::size_t{4}); // docs, media, empty, readme
+    CHECK_EQ(all.items.size(), std::size_t{3}); // "empty" has no area and is not drawn
+    CHECK_EQ(all.items[0].name, std::string("media"));
+    CHECK(all.items[0].directory);
+    CHECK_EQ(all.items[0].size, std::uint64_t{5700});
+    CHECK_EQ(all.items[1].name, std::string("docs"));
+    CHECK_EQ(all.items[2].name, std::string("readme"));
+    CHECK(!all.items[2].directory);
+    for (const auto& item : all.items) CHECK(!item.aggregate);
+
+    // Only two blocks fit: the biggest child plus one aggregate that folds the other two.
+    const auto capped = bridge.getTreemap(dir.path(), 2);
+    CHECK_EQ(capped.items.size(), std::size_t{2});
+    CHECK_EQ(capped.items[0].name, std::string("media"));
+    CHECK(capped.items[1].aggregate);
+    CHECK_EQ(capped.items[1].count, std::size_t{2});
+    CHECK_EQ(capped.items[1].size, std::uint64_t{400 + 9});
+    CHECK(capped.items[1].path.empty());
+
+    const auto onlyRest = bridge.getTreemap(dir.path(), 0);
+    CHECK_EQ(onlyRest.items.size(), std::size_t{1});
+    CHECK(onlyRest.items[0].aggregate);
+    CHECK_EQ(onlyRest.items[0].count, std::size_t{3});
+    CHECK_EQ(onlyRest.items[0].size, std::uint64_t{6109});
+
+    CHECK(!bridge.getTreemap(dir.path() / "readme", 5).found);
+    CHECK(!bridge.getTreemap(dir.path() / "nope", 5).found);
+    CHECK(!SnapshotBridge{}.getTreemap(dir.path(), 5).found);
+}
+
 int main() {
     RUN(timestampFormatting);
     RUN(beforeFirstScanEverythingIsEmpty);
     RUN(dashboardReflectsSnapshot);
     RUN(largestFilesAndExtensions);
     RUN(listingAndTree);
+    RUN(largestFilesInDirectory);
+    RUN(largestFilesInMatchesGlobalRanking);
+    RUN(treemapBlocks);
     RUN(queriesAreSafeWhileRepublishing);
     return testReport("bridge_tests");
 }

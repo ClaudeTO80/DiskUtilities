@@ -231,6 +231,39 @@ void searchPageRequestAndShapes() {
     CHECK(!js.isMember("error")); // would make the front end throw for every failed search poll
 }
 
+void treemapShape() {
+    TreemapDto dto;
+    dto.found = true;
+    dto.path = "/data";
+    dto.totalBytes = 30;
+    dto.childCount = 3;
+    TreemapItemDto item;
+    item.name = "a";
+    item.path = "/data/a";
+    item.size = 20;
+    item.directory = true;
+    dto.items.push_back(item);
+    TreemapItemDto rest;
+    rest.aggregate = true;
+    rest.count = 2;
+    rest.size = 10;
+    dto.items.push_back(rest);
+    const Json::Value j = toJson(dto);
+    CHECK(j["found"].asBool());
+    CHECK_EQ(j["path"].asString(), std::string("/data"));
+    CHECK_EQ(j["totalBytes"].asUInt64(), std::uint64_t{30});
+    CHECK_EQ(j["childCount"].asUInt64(), std::uint64_t{3});
+    CHECK_EQ(j["items"].size(), 2u);
+    CHECK(j["items"][0]["directory"].asBool());
+    CHECK(!j["items"][0]["aggregate"].asBool());
+    CHECK_EQ(j["items"][0]["count"].asUInt64(), std::uint64_t{1});
+    CHECK(j["items"][1]["aggregate"].asBool());
+    CHECK_EQ(j["items"][1]["count"].asUInt64(), std::uint64_t{2});
+    CHECK(j["items"][1]["path"].asString().empty());
+    // The "error" key is reserved for failures in web/app.js: a treemap never carries it.
+    CHECK(!j.isMember("error"));
+}
+
 int main() {
     RUN(listingShape);
     RUN(dashboardShape);
@@ -244,5 +277,6 @@ int main() {
     RUN(searchRequestDefaultsAndClamping);
     RUN(searchRequestRejectsBadInput);
     RUN(searchPageRequestAndShapes);
+    RUN(treemapShape);
     return testReport("json_tests");
 }

@@ -35,6 +35,21 @@ Totals, per-extension statistics and the top-100 file list are identical in both
 
 - `SearchController::results()` sorts indices under its lock: at most 7 ms for 100,000 hits.
 
+## Folder detail queries (101,101 entries, 100,000 files, release build, median of 31 runs)
+
+Machine: 2 vCPU Intel Xeon 2.10 GHz VM, 7 GiB RAM, warm cache. Tree: 100 areas x 10 sub-folders x 100 sparse files with
+log-normal sizes (median about 8 KB, a few reaching hundreds of MB), generated for this measurement and not committed.
+
+| Query (`Snapshot::largestFilesUnder`)  | Files visited | Median   | Minimum  |
+|----------------------------------------|---------------|----------|----------|
+| root, 100 files                        | 100,000       | 0.69 ms  | 0.63 ms  |
+| root, 10,000 files                     | 100,000       | 5.6 ms   | 5.4 ms   |
+| `area7`, 100 files                     | 1,000         | 0.007 ms | 0.007 ms |
+| `area7/sub3`, 100 files                | 100           | 0.002 ms | 0.002 ms |
+
+- Cost follows the size of the subtree, not of the whole tree. Only the root case visits every file.
+- Not measured: trees above 100,000 files, cold cache, and Windows/macOS.
+
 ## How to re-measure
 
 1. Generate a tree with a fixed size and record its file and directory counts.

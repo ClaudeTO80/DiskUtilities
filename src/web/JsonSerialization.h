@@ -44,6 +44,10 @@ Json::Value toJson(const ScanStatus& value);
 Json::Value toJson(const std::vector<ExtensionStatisticsDto>& value);
 /** @brief Serialize a file ranking to a JSON array. @param value Source DTOs. */
 Json::Value toJson(const std::vector<FileDto>& value);
+/** @brief Serialize one treemap block to a JSON object (aggregate flag, count, size, directory flag). @param value Source DTO. */
+Json::Value toJson(const TreemapItemDto& value);
+/** @brief Serialize a treemap to a JSON object: found, path, totalBytes, childCount, items[]. @param value Source DTO. */
+Json::Value toJson(const TreemapDto& value);
 
 /**
  * @brief Serialize a folder listing together with the starting-point shortcuts.

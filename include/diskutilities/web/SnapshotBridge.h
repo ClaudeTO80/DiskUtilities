@@ -42,6 +42,10 @@ public:
     DirectoryListingDto listDirectory(const std::filesystem::path& directory, const ListOptions& options) override;
     /** @copydoc BridgeContract::getDirectoryTree */
     DirectoryTreeDto getDirectoryTree(const std::filesystem::path& root, std::size_t maxDepth) override;
+    /** @copydoc BridgeContract::getLargestFilesIn */
+    std::vector<FileDto> getLargestFilesIn(const std::filesystem::path& directory, std::size_t limit) override;
+    /** @copydoc BridgeContract::getTreemap */
+    TreemapDto getTreemap(const std::filesystem::path& directory, std::size_t maxItems) override;
 
     /** @brief Format Unix seconds as ISO-8601 UTC ("" for kNoTimestamp). Exposed for tests. */
     static std::string formatTimestamp(std::int64_t unixSeconds);

@@ -117,6 +117,28 @@ struct DirectoryListingDto {
 };
 
 /**
+ * @brief One block of the treemap: a child of the inspected directory, or the aggregate of the children that did
+ *        not fit (see TreemapItemDto::aggregate).
+ */
+struct TreemapItemDto {
+    std::string name;       ///< Child name; empty for the aggregate block.
+    std::string path;       ///< Absolute path (UTF-8); empty for the aggregate block.
+    std::uint64_t size = 0; ///< Aggregate size in bytes.
+    std::size_t count = 1;  ///< 1 for a real child; the number of folded children for the aggregate block.
+    bool directory = false; ///< True for a directory block.
+    bool aggregate = false; ///< True for the block that stands for all the folded children.
+};
+
+/** @brief Blocks of one directory's children, ready to be laid out as a treemap. */
+struct TreemapDto {
+    bool found = false;                ///< False if the directory is not part of the snapshot.
+    std::string path;                  ///< Absolute path of the directory (UTF-8).
+    std::uint64_t totalBytes = 0;      ///< Aggregate size of the directory.
+    std::size_t childCount = 0;        ///< All children, including zero-size ones that have no block.
+    std::vector<TreemapItemDto> items; ///< Biggest first; the aggregate block, if any, comes last.
+};
+
+/**
  * @brief Queries available to the frontend.
  * @details Implementations must be thread-safe: the WebUI dispatches each event on its
  * own thread. Every query that takes a root returns an empty/"not scanned"
@@ -156,6 +178,19 @@ public:
      * @param maxDepth Levels of sub-directories to include below the root (0 = root only).
      */
     virtual DirectoryTreeDto getDirectoryTree(const std::filesystem::path& root, std::size_t maxDepth) = 0;
+    /**
+     * @brief The biggest regular files below a directory, at any depth.
+     * @param directory Directory to search (must be inside the snapshot).
+     * @param limit     Maximum number of files returned.
+     * @return Files, size descending; empty if the directory is not part of the snapshot.
+     */
+    virtual std::vector<FileDto> getLargestFilesIn(const std::filesystem::path& directory, std::size_t limit) = 0;
+    /**
+     * @brief The children of a directory as treemap blocks.
+     * @param directory Directory to show (must be inside the snapshot).
+     * @param maxItems  Maximum number of blocks, the aggregate block included; 0 returns only the aggregate block.
+     */
+    virtual TreemapDto getTreemap(const std::filesystem::path& directory, std::size_t maxItems) = 0;
 };
 
 } // namespace diskutilities::web

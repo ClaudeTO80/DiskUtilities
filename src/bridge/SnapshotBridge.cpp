@@ -194,4 +194,67 @@ DirectoryTreeDto SnapshotBridge::getDirectoryTree(const std::filesystem::path& r
     return buildTree(*snap, Snapshot::rootId(), maxDepth);
 }
 
+std::vector<FileDto> SnapshotBridge::getLargestFilesIn(const std::filesystem::path& directory, std::size_t limit) {
+    std::vector<FileDto> result;
+    const auto snap = snapshot();
+    if (!snap) return result;
+    const auto id = snap->find(directory);
+    if (!id || snap->node(*id).type != EntryType::Directory) return result;
+    const auto ids = snap->largestFilesUnder(*id, limit);
+    result.reserve(ids.size());
+    for (const NodeId file : ids) result.push_back(makeFile(*snap, file));
+    return result;
+}
+
+TreemapDto SnapshotBridge::getTreemap(const std::filesystem::path& directory, std::size_t maxItems) {
+    TreemapDto dto;
+    const auto snap = snapshot();
+    if (!snap) {
+        dto.path = pathToUtf8(normalizeRoot(directory));
+        return dto;
+    }
+    const auto id = snap->find(directory);
+    if (!id || snap->node(*id).type != EntryType::Directory) {
+        dto.path = pathToUtf8(normalizeRoot(directory));
+        return dto;
+    }
+    dto.found = true;
+    dto.path = snap->pathOf(*id);
+    dto.totalBytes = snap->bytesOf(*id);
+    const auto kids = snap->children(*id);
+    dto.childCount = kids.size();
+
+    // Zero-size children have no area in a treemap, so they are counted but not drawn.
+    std::vector<NodeId> sized;
+    sized.reserve(kids.size());
+    for (const NodeId child : kids)
+        if (snap->bytesOf(child) > 0) sized.push_back(child);
+    std::sort(sized.begin(), sized.end(), [&](NodeId a, NodeId b) {
+        if (snap->bytesOf(a) != snap->bytesOf(b)) return snap->bytesOf(a) > snap->bytesOf(b);
+        return snap->node(a).name < snap->node(b).name; // deterministic tie-break
+    });
+
+    const bool overflow = sized.size() > maxItems;
+    const std::size_t shown = overflow ? (maxItems > 0 ? maxItems - 1 : 0) : sized.size();
+    dto.items.reserve(shown + (overflow ? 1 : 0));
+    for (std::size_t i = 0; i < shown; ++i) {
+        const NodeId child = sized[i];
+        const Node& node = snap->node(child);
+        TreemapItemDto item;
+        item.name = node.name;
+        item.path = snap->pathOf(child);
+        item.size = snap->bytesOf(child);
+        item.directory = node.type == EntryType::Directory;
+        dto.items.push_back(std::move(item));
+    }
+    if (overflow) {
+        TreemapItemDto rest;
+        rest.aggregate = true;
+        rest.count = sized.size() - shown;
+        for (std::size_t i = shown; i < sized.size(); ++i) rest.size += snap->bytesOf(sized[i]);
+        dto.items.push_back(std::move(rest));
+    }
+    return dto;
+}
+
 } // namespace diskutilities::web

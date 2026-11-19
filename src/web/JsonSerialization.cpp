@@ -202,6 +202,28 @@ Json::Value toJson(const std::vector<FileDto>& v) {
     return j;
 }
 
+Json::Value toJson(const TreemapItemDto& v) {
+    Json::Value j(Json::objectValue);
+    j["name"] = v.name;
+    j["path"] = v.path;
+    j["size"] = Json::UInt64(v.size);
+    j["count"] = Json::UInt64(v.count);
+    j["directory"] = v.directory;
+    j["aggregate"] = v.aggregate;
+    return j;
+}
+
+Json::Value toJson(const TreemapDto& v) {
+    Json::Value j(Json::objectValue);
+    j["found"] = v.found;
+    j["path"] = v.path;
+    j["totalBytes"] = Json::UInt64(v.totalBytes);
+    j["childCount"] = Json::UInt64(v.childCount);
+    j["items"] = Json::Value(Json::arrayValue);
+    for (const auto& item : v.items) j["items"].append(toJson(item));
+    return j;
+}
+
 std::string writeJson(const Json::Value& value) {
     Json::StreamWriterBuilder builder;
     builder["indentation"] = "";

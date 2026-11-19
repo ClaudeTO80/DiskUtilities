@@ -134,6 +134,16 @@ public:
 
     /** @brief The @p limit biggest regular files, size descending (ties broken by path order). */
     [[nodiscard]] std::span<const NodeId> largestFiles(std::size_t limit) const;
+    /**
+     * @brief The @p limit biggest regular files inside a directory, at any depth.
+     * @details Walks the subtree of @p directory and keeps the best @p limit files in a bounded heap, so the cost
+     *          is O(subtree size * log limit) and the result does not depend on the global largestFiles() index.
+     *          Ties are broken by path order, as in largestFiles().
+     * @param directory Directory node; a non-directory or an out-of-range id yields an empty result.
+     * @param limit     Maximum number of files returned.
+     * @return Node ids, size descending.
+     */
+    [[nodiscard]] std::vector<NodeId> largestFilesUnder(NodeId directory, std::size_t limit) const;
     /** @brief Direct sub-directories of the root ordered by aggregate size, descending. */
     [[nodiscard]] std::vector<NodeId> largestTopLevelDirectories(std::size_t limit) const;
     /** @brief Extension statistics ordered by total bytes, descending. */

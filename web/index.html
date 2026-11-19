@@ -61,6 +61,13 @@
         <div class="page-heading"><div><p class="eyebrow">NAVIGAZIONE</p><h1>Esplora disco</h1><p class="subtitle">Consulta directory e file senza modificarli.</p></div></div>
         <div class="explorer-toolbar"><div class="breadcrumbs" id="breadcrumbs"></div><label class="search-box"><span>⌕</span><input id="explorerSearch" type="search" placeholder="Filtra elementi…" autocomplete="off"></label></div>
         <div class="explorer-layout"><aside class="panel tree-panel"><div class="panel-heading"><div><h2>Directory</h2><p>Seleziona una cartella</p></div></div><div class="directory-tree" id="directoryTree" role="tree" aria-label="Directory"></div></aside><article class="panel contents-panel"><div class="panel-heading"><div><h2 id="currentDirectoryTitle">Contenuto directory</h2><p id="currentDirectoryMeta">—</p></div><label class="sort-select">Ordina <select id="explorerSort"><option value="name">Nome</option><option value="size">Dimensione</option><option value="modified">Modifica</option><option value="type">Tipo</option></select></label></div><div class="table-wrap"><table><thead><tr><th>Nome</th><th>Tipo</th><th>Ultima modifica</th><th class="align-right">Dimensione</th></tr></thead><tbody id="explorerBody"></tbody></table></div><div class="empty-state hidden" id="explorerEmpty">Nessun elemento da mostrare.</div><div class="more-wrap"><button class="button button-secondary hidden" id="explorerMore">Carica altri elementi</button></div></article></div>
+        <article class="panel folder-detail hidden" id="folderDetail" aria-labelledby="folderDetailTitle">
+          <div class="panel-heading"><div><h2 id="folderDetailTitle">File più pesanti della cartella</h2><p id="folderDetailMeta">—</p></div></div>
+          <div class="folder-detail-grid">
+            <div class="table-wrap folder-detail-files"><table><thead><tr><th>Nome file</th><th class="align-right">Dimensione</th></tr></thead><tbody id="folderDetailFiles"></tbody></table></div>
+            <div class="folder-detail-map"><div class="treemap" id="treemap" role="group" aria-label="Mappa a blocchi del contenuto della cartella"></div><p class="treemap-note" id="treemapNote"></p></div>
+          </div>
+        </article>
       </section>
 
       <section class="page-view" id="view-largest">

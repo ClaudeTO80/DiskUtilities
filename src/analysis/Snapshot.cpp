@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <queue>
 #include <stdexcept>
 #include <unordered_map>
 #include <utility>
@@ -227,6 +228,41 @@ std::optional<NodeId> Snapshot::find(const std::filesystem::path& absolutePath) 
 
 std::span<const NodeId> Snapshot::largestFiles(std::size_t limit) const {
     return std::span<const NodeId>(largestFiles_).first(std::min(limit, largestFiles_.size()));
+}
+
+std::vector<NodeId> Snapshot::largestFilesUnder(NodeId directory, std::size_t limit) const {
+    std::vector<NodeId> result;
+    if (limit == 0 || directory >= nodes_.size() || nodes_[directory].type != EntryType::Directory) return result;
+    // "better" orders by size descending, then path order. A std::priority_queue keeps the worst retained
+    // file on top, so a candidate replaces it only when it ranks higher.
+    const auto better = [&](NodeId a, NodeId b) {
+        if (nodes_[a].size != nodes_[b].size) return nodes_[a].size > nodes_[b].size;
+        return order_[a] < order_[b];
+    };
+    std::priority_queue<NodeId, std::vector<NodeId>, decltype(better)> worstOnTop(better);
+    std::vector<NodeId> pending{directory};
+    while (!pending.empty()) {
+        const NodeId id = pending.back();
+        pending.pop_back();
+        const EntryType type = nodes_[id].type;
+        if (type == EntryType::RegularFile) {
+            if (worstOnTop.size() < limit) {
+                worstOnTop.push(id);
+            } else if (better(id, worstOnTop.top())) {
+                worstOnTop.pop();
+                worstOnTop.push(id);
+            }
+        } else if (type == EntryType::Directory) {
+            for (const NodeId child : children(id)) pending.push_back(child);
+        }
+    }
+    result.reserve(worstOnTop.size());
+    while (!worstOnTop.empty()) {
+        result.push_back(worstOnTop.top());
+        worstOnTop.pop();
+    }
+    std::reverse(result.begin(), result.end()); // best first
+    return result;
 }
 
 std::vector<NodeId> Snapshot::largestTopLevelDirectories(std::size_t limit) const {

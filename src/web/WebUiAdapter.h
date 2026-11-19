@@ -54,6 +54,8 @@ private:
     void getExtensionStatistics(webui::window::event* event);
     void listDirectory(webui::window::event* event);
     void getDirectoryTree(webui::window::event* event);
+    void getLargestFilesIn(webui::window::event* event);
+    void getTreemap(webui::window::event* event);
     void startScan(webui::window::event* event);
     void cancelScan(webui::window::event* event);
     void getScanStatus(webui::window::event* event);

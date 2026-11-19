@@ -66,6 +66,8 @@ void WebUiAdapter::bind() {
     window_.bind("du_getExtensionStatistics", this, &WebUiAdapter::getExtensionStatistics);
     window_.bind("du_listDirectory", this, &WebUiAdapter::listDirectory);
     window_.bind("du_getDirectoryTree", this, &WebUiAdapter::getDirectoryTree);
+    window_.bind("du_getLargestFilesIn", this, &WebUiAdapter::getLargestFilesIn);
+    window_.bind("du_getTreemap", this, &WebUiAdapter::getTreemap);
     window_.bind("du_startScan", this, &WebUiAdapter::startScan);
     window_.bind("du_cancelScan", this, &WebUiAdapter::cancelScan);
     window_.bind("du_getScanStatus", this, &WebUiAdapter::getScanStatus);
@@ -116,6 +118,20 @@ void WebUiAdapter::getDirectoryTree(webui::window::event* e) {
     e->return_string(jsonResult([&] {
         const auto depth = static_cast<std::size_t>(std::clamp<long long>(eventInt(e, 1, 2), 0, 64));
         return toJson(bridge_.getDirectoryTree(rootArgument(e), depth));
+    }));
+}
+
+void WebUiAdapter::getLargestFilesIn(webui::window::event* e) {
+    e->return_string(jsonResult([&] {
+        const auto limit = static_cast<std::size_t>(std::clamp<long long>(eventInt(e, 1, 100), 0, 10000));
+        return toJson(bridge_.getLargestFilesIn(rootArgument(e), limit));
+    }));
+}
+
+void WebUiAdapter::getTreemap(webui::window::event* e) {
+    e->return_string(jsonResult([&] {
+        const auto maxItems = static_cast<std::size_t>(std::clamp<long long>(eventInt(e, 1, 200), 0, 1000));
+        return toJson(bridge_.getTreemap(rootArgument(e), maxItems));
     }));
 }
 
