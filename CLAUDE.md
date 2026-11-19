@@ -5,7 +5,9 @@ Guidance for Claude Code (and other coding agents) working on DiskUtilities 0.1.
 ## What this is
 
 Read-only disk utilities (usage analysis + file search): C++23 core + WebUI front end (`web/`) + CLI. Optional TK4CPP integration.
-Read `README.md` first, then `docs/design.md`.
+Read `README.md` first, then `docs/design.md`. Before changing code, read `docs/status.md` (current state and open
+items) and `docs/decisions.md` (why things are the way they are). Quote numbers only from `docs/measurements.md`, and
+add a line to `docs/status.md`'s log when a milestone changes.
 
 ## Conversation and code conventions
 
@@ -87,5 +89,5 @@ src/{core,filesystem,analysis,bridge,web,tk4cpp,cli}         implementation
 src/main.cpp                                                 GUI entry point
 web/                                                         HTML/CSS/JS front end
 tests/                                                       dependency-free test executables (ctest)
-docs/                                                        Doxyfile, mainpage, design notes, images
+docs/                                                        Doxyfile, mainpage, design notes, status, decisions, measurements, images
 ```
