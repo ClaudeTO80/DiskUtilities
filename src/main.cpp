@@ -28,10 +28,27 @@
 
 namespace {
 
+#if defined(_WIN32)
+/**
+ * @brief Read a wide environment variable with the bounds-checked CRT call.
+ * @details _wgetenv is deprecated by MSVC (C4996); _wgetenv_s copies the value into caller-owned storage.
+ * @param name Variable name.
+ * @return The value, or an empty path if the variable is unset or empty.
+ */
+std::filesystem::path wideEnvironmentPath(const wchar_t* name) {
+    std::size_t required = 0; // includes the terminating null
+    if (_wgetenv_s(&required, nullptr, 0, name) != 0 || required <= 1) return {};
+    std::wstring value(required, L'\0');
+    if (_wgetenv_s(&required, value.data(), value.size(), name) != 0) return {};
+    value.resize(required - 1);
+    return std::filesystem::path(value);
+}
+#endif
+
 /** Start in the user's home rather than the (possibly System32 or build) working directory. */
 std::filesystem::path defaultUserDirectory() {
 #if defined(_WIN32)
-    if (const wchar_t* home = _wgetenv(L"USERPROFILE"); home && *home) return std::filesystem::path(home);
+    if (auto home = wideEnvironmentPath(L"USERPROFILE"); !home.empty()) return home;
 #else
     if (const char* home = std::getenv("HOME"); home && *home) return std::filesystem::path(home);
 #endif
